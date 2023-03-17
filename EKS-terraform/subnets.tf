@@ -22,7 +22,7 @@ resource "aws_subnet" "private-us-west-2b" {
   }
 }
 
-resource "aws_subnet" "public-us-west-1a" {
+resource "aws_subnet" "public-us-west-2b" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.64.0/19"
   availability_zone       = "us-west-2b"
@@ -47,17 +47,3 @@ resource "aws_subnet" "public-us-west-2b" {
     "kubernetes.io/cluster/demo" = "owned"
   }
 }
-Footer
-© 2023 GitHub, Inc.
-Footer navigation
-Terms
-Privacy
-Security
-Status
-Docs
-Contact GitHub
-Pricing
-API
-Training
-Blog
-About
