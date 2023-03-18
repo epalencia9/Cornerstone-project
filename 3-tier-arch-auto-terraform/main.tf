@@ -1,101 +1,209 @@
-resource "aws_vpc" "vpc" {
-  cidr_block       = "10.0.0.0/21"
-  instance_tenancy = "default"
-  enable_dns_hostnames = true
-  assign_generated_ipv6_cidr_block = true
-  
+provider "aws" {
+  profile = "default"
+  region  = "${var.region}"
+}
+
+data "aws_availability_zones" "available" {}
+
+resource "aws_vpc" "default" {
+  cidr_block = "${var.vpc_cidr_block}"
 
   tags = {
-    Name = "Terraform-VPC"
+    Name = "${var.vpc_name}"
   }
 }
 
-resource "aws_internet_gateway" "gateway" {
-  vpc_id = aws_vpc.vpc.id
+resource "aws_subnet" "web" {
+  count             = "${length(var.web_subnets_cidr_blocks)}"
+  vpc_id            = "${aws_vpc.default.id}"
+  availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
+  cidr_block        = "${var.web_subnets_cidr_blocks[count.index]}"
 
   tags = {
-    name = "Terraform-Gateway"
+    Name = "web-public-${count.index}"
   }
-  
-  
+
 }
 
-resource "aws_subnet" "public-subnet" {
-  vpc_id = aws_vpc.vpc.id
-  cidr_block = "10.0.0.0/24"
-  
+resource "aws_subnet" "app" {
+  count             = "${length(var.app_subnets_cidr_blocks)}"
+  vpc_id            = "${aws_vpc.default.id}"
+  availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
+  cidr_block        = "${var.app_subnets_cidr_blocks[count.index]}"
 
   tags = {
-    "name" = "Terraform-subnet-public"
+    Name = "app-private-${count.index}"
   }
-  
+
 }
 
-resource "aws_route_table" "route-table" {
-  vpc_id = aws_vpc.vpc.id
+resource "aws_subnet" "db" {
+  count             = "${length(var.public_subnets_cidr_blocks)}"
+  vpc_id            = "${aws_vpc.default.id}"
+  availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
+  cidr_block        = "${var.db_subnets_cidr_blocks[count.index]}"
+
+  tags = {
+    Name = "db-private-${count.index}"
+  }
+
+}
+
+# Create an internet gateway to give our subnet access to the outside world
+resource "aws_internet_gateway" "default" {
+  vpc_id = "${aws_vpc.default.id}"
+
+  tags = {
+    Name = "${var.vpc_name}"
+  }
+}
+
+# Create public subnet for common resources like NAT Gateway etc.
+resource "aws_subnet" "public" {
+  count             = "${length(var.public_subnets_cidr_blocks)}"
+  vpc_id            = "${aws_vpc.default.id}"
+  availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
+  cidr_block        = "${var.public_subnets_cidr_blocks[count.index]}"
+
+  tags = {
+    Name = "public-${count.index}"
+  }
+}
+
+# Create Route tables for public layer
+resource "aws_route_table" "public" {
+  vpc_id = "${aws_vpc.default.id}"
 
   route {
-    cidr_block = "10.0.0.0/21"
-    gateway_id = aws_internet_gateway.gateway.id
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_internet_gateway.default.id}"
   }
 
   tags = {
-    Name = "Terraform-route-table"
+    Name = "Public"
   }
 }
 
-resource "aws_route_table_association" "subnet-route-table" {
-  subnet_id = aws_subnet.public-subnet.id
-  route_table_id = aws_route_table.route-table.id
-  
+resource "aws_route_table_association" "public" {
+  count          = "${length(var.public_subnets_cidr_blocks)}"
+  subnet_id      = "${element(aws_subnet.public.*.id, count.index)}"
+  route_table_id = "${aws_route_table.public.id}"
 }
 
-resource "aws_subnet" "private-subnet" {
-  vpc_id = aws_vpc.vpc.id
-  cidr_block = "10.1.10.0/23"
- 
-  
-
-  tags = {
-    "name" = "Terraform-subnet-private"
-  }
-  
-}
-
+# Create Elastic IP for NAT gateway
 resource "aws_eip" "nat_eip" {
-  vpc        = true
-  depends_on = [aws_internet_gateway.gateway]
-}
+  vpc = true
 
-/* NAT */
-resource "aws_nat_gateway" "nat" {
-  allocation_id = "${aws_eip.nat_eip.id}"
-  subnet_id     = "${element(aws_subnet.public-subnet.*.id, 0)}"
-  depends_on    = [aws_internet_gateway.gateway]
   tags = {
-    Name        = "NAT"
+    Name = "Nat Gateway IP"
   }
 }
 
-#Creates a RDS instance.
+# Create an NAT gateway to give our private subnets to access to the outside world
 
-resource "aws_db_instance" "default" {
-  allocated_storage    = 10
-  db_name              = "mydb"
-  engine               = "mysql"
-  engine_version       = "5.7"
-  instance_class       = "db.t3.micro"
-  username             = "foo"
-  password             = "foobarbaz"
-  parameter_group_name = "default.mysql5.7"
-  skip_final_snapshot  = true
+resource "aws_nat_gateway" "default" {
+  allocation_id = "${aws_eip.nat_eip.id}"
+  subnet_id     = "${element(aws_subnet.public.*.id, 0)}"
+
+  tags = {
+    Name = "${var.vpc_name}"
+  }
 }
 
-#Configures security group for Web layer.
+# Create Route tables for web layer
+resource "aws_route_table" "web" {
+  vpc_id = "${aws_vpc.default.id}"
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_internet_gateway.default.id}"
+  }
+
+  tags = {
+    Name = "Web"
+  }
+}
+
+resource "aws_route_table_association" "web" {
+  count          = "${length(var.web_subnets_cidr_blocks)}"
+  subnet_id      = "${element(aws_subnet.web.*.id, count.index)}"
+  route_table_id = "${aws_route_table.web.id}"
+}
+
+# Create Route tables for App layer
+
+resource "aws_route_table" "app" {
+  vpc_id = "${aws_vpc.default.id}"
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_nat_gateway.default.id}"
+  }
+
+  tags = {
+    Name = "App"
+  }
+}
+
+resource "aws_route_table_association" "app" {
+  count          = "${length(var.app_subnets_cidr_blocks)}"
+  subnet_id      = "${element(aws_subnet.app.*.id, count.index)}"
+  route_table_id = "${aws_route_table.app.id}"
+}
+
+# Create Route tables for App layer
+
+resource "aws_route_table" "db" {
+  vpc_id = "${aws_vpc.default.id}"
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_nat_gateway.default.id}"
+  }
+
+  tags = {
+    Name = "DB"
+  }
+}
+
+resource "aws_route_table_association" "db" {
+  count          = "${length(var.db_subnets_cidr_blocks)}"
+  subnet_id      = "${element(aws_subnet.db.*.id, count.index)}"
+  route_table_id = "${aws_route_table.db.id}"
+}
+
+# Create RDS subnet group
+
+resource "aws_db_subnet_group" "rds_subnet_group" {
+  name       = "${var.rds_subnet_name}"
+  subnet_ids = [for value in aws_subnet.db: value.id]
+
+
+
+  tags = {
+    Name = "${var.rds_subnet_name}"
+  }
+}
+
+# Create RDS instance
+
+resource "aws_db_instance" "rds" {
+  allocated_storage    = "${var.rds_storage}"
+  engine               = "${var.rds_engine}"
+  instance_class       = "${var.rds_instance_class}"
+  name                 = "${var.rds_name}"
+  username             = "${var.rds_username}"
+  password             = "${var.rds_password}"
+  db_subnet_group_name = "${var.rds_subnet_name}"
+  depends_on = [aws_db_subnet_group.rds_subnet_group]
+}
+
+# Create security group for webservers
+
 resource "aws_security_group" "webserver_sg" {
   name        = "allow_http"
   description = "Allow http inbound traffic"
-  vpc_id      = aws_vpc.vpc.id
+  vpc_id      = "${aws_vpc.default.id}"
 
   ingress {
   from_port   = 80
@@ -112,28 +220,31 @@ egress {
 }
 
 tags = {
-  Name = "webserver_security"
+  Name = "${var.websg_name}"
   }
 }
 
-#EC2 instances for webservers.
 
-resource "aws_instance" "jenkins_server" {
-  ami             = "ami-0df24e148fdb9f1d8"
-  instance_type   = "t2.micro"
-  key_name = "Natalierose"
-  subnet_id = aws_subnet.public-subnet.id
+# Create EC2 instances for webservers
+
+resource "aws_instance" "webservers" {
+  count           = "${length(var.web_subnets_cidr_blocks)}"
+  ami             = "${var.web_ami}"
+  instance_type   = "${var.web_instance}"
+  security_groups = ["${aws_security_group.webserver_sg.id}"]
+  subnet_id       = "${element(aws_subnet.web.*.id,count.index)}"
 
   tags = {
-    Name = "Jenkins.sver-terraform"
+    Name = "${element(var.webserver_name,count.index)}"
   }
 }
 
-#Application load balancer.
+# Creating application load balancer
 
 resource "aws_lb" "weblb" {
-  name               = "webbalancer"
+  name               = "${var.lb_name}"
   load_balancer_type = "application"
-  subnets            = [aws_subnet.public-subnet.id][aws_subnet.private-subnet.id]
+  security_groups    = ["${aws_security_group.webserver_sg.id}"]
+  subnets            = [for subnet in aws_subnet.web : subnet.id]
 
 }
