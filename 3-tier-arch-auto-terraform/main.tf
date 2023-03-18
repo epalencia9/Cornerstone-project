@@ -6,7 +6,7 @@ resource "aws_vpc" "vpc" {
   
 
   tags = {
-    Name = "Terraform VPC"
+    Name = "Terraform-VPC"
   }
 }
 
@@ -14,7 +14,7 @@ resource "aws_internet_gateway" "gateway" {
   vpc_id = aws_vpc.vpc.id
 
   tags = {
-    name = "terraform-gateway"
+    name = "Terraform-Gateway"
   }
   
   
@@ -26,7 +26,7 @@ resource "aws_subnet" "public-subnet" {
   
 
   tags = {
-    "name" = "terraformsubnetpublic"
+    "name" = "Terraform-subnet-public"
   }
   
 }
@@ -40,7 +40,7 @@ resource "aws_route_table" "route-table" {
   }
 
   tags = {
-    Name = "terraformroutetable"
+    Name = "Terraform-route-table"
   }
 }
 
@@ -57,7 +57,7 @@ resource "aws_subnet" "private-subnet" {
   
 
   tags = {
-    "name" = "terraformsubnetprivate"
+    "name" = "Terraform-subnet-private"
   }
   
 }
@@ -73,7 +73,7 @@ resource "aws_nat_gateway" "nat" {
   subnet_id     = "${element(aws_subnet.public-subnet.*.id, 0)}"
   depends_on    = [aws_internet_gateway.gateway]
   tags = {
-    Name        = "nat"
+    Name        = "NAT"
   }
 }
 
@@ -125,7 +125,7 @@ resource "aws_instance" "jenkins_server" {
   subnet_id = aws_subnet.public-subnet.id
 
   tags = {
-    Name = "Jenkins_server-terraform"
+    Name = "Jenkins.sver-terraform"
   }
 }
 
