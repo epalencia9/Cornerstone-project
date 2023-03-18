@@ -10,7 +10,7 @@ variable "vpc_cidr_block" {
 
 variable "vpc_name" {
   description = "Name of the VPC"
-  default     = "three-tier"
+  default     = "three-tier-automation"
 }
 
 variable "public_subnets_cidr_blocks" {
