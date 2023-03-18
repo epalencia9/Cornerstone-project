@@ -75,7 +75,7 @@ variable "websg_name" {
 
 variable "web_ami" {
   description = "AMI of webservers"
-  default     = "ami-0cff7528ff583bf9a"
+  default     = "ami-0df24e148fdb9f1d8"
 }
 
 variable "web_instance" {
