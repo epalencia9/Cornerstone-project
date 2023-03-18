@@ -121,7 +121,7 @@ tags = {
 resource "aws_instance" "jenkins_server" {
   ami             = "ami-0df24e148fdb9f1d8"
   instance_type   = "t2.micro"
-  key_name = "Natlaierose"
+  key_name = "Natalierose"
   subnet_id = aws_subnet.public-subnet.id
 
   tags = {
